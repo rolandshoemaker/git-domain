@@ -7,9 +7,9 @@ of the total stats and summed using weights that can be tweaked.
 
 ## TODO
 
-[ ] If arg is filename just check that file, if the arg is a folder name check stats
+* [ ] If arg is filename just check that file, if the arg is a folder name check stats
   for each file in the folder (and recurse if flag is set)
-[ ] On folder check also try to figure out who owns the folder
-[ ] Recursive flag
-[ ] Move everything to proper structs (methods, printers etc)
-[ ] Parallelize current/historic checks
+* [ ] On folder check also try to figure out who owns the folder
+* [ ] Recursive flag
+* [ ] Move everything to proper structs (methods, printers etc)
+* [ ] Parallelize current/historic checks
