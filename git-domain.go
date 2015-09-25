@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/codegangsta/cli"
 )
 
 const (
@@ -139,36 +140,68 @@ func domain(filename string) (string, error) {
 }
 
 func main() {
-	folder := "/home/roland/code/go/src/github.com/letsencrypt/boulder"
-	filename := flag.String("filename", "", "")
-	flag.Parse()
+	app := cli.NewApp()
+	app.Name = "git domain"
+	app.Usage = "Deduce the ownership of a file/folder"
+	app.Version = "0.1.0"
+	app.Author = "Roland Shoemaker"
+	app.Email = "rolandshoemaker@gmail.com"
 
-	fs := fileStats{
-		workingStats: make(map[string]authorStats),
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "repository-folder",
+			Value: ".",
+			Usage: "Folder that contains the repository (defaults to the folder you are currently in)",
+		},
+		cli.BoolFlag{
+			Name:  "t, top",
+			Usage: "Only print the name of the most suitable contributor",
+		},
+		cli.BoolFlag{
+			Name:  "s, stripped",
+			Usage: "Only print the name of the contributors (in order of suitability)",
+		},
 	}
 
-	err := getHistoricStats(folder, *filename, fs.workingStats)
-	if err != nil {
-		fmt.Println(err)
-		return
+	app.Action = func(c *cli.Context) {
+		fs := fileStats{
+			workingStats: make(map[string]authorStats),
+		}
+
+		err := getHistoricStats(c.GlobalString("repository-folder"), c.Args().First(), fs.workingStats)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		err = getCurrentStats(c.GlobalString("repository-folder"), c.Args().First(), fs.workingStats)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		for k, v := range fs.workingStats {
+			v.author = k
+			v.suitability = (v.commitsShare * commitsShareWeight) + (v.currentLinesShare * currentLinesShareWeight) + (v.linesTouchedShare * linesTouchedShareWeight)
+			fs.finishedStats = append(fs.finishedStats, v)
+		}
+		sort.Sort(fs.finishedStats)
+		if c.GlobalBool("top") {
+			fs.finishedStats = fs.finishedStats[0:1]
+		}
+		w := new(tabwriter.Writer)
+		w.Init(os.Stdout, 0, 8, 2, '\t', 0)
+		if !c.GlobalBool("stripped") {
+			fmt.Fprintln(w, "Author\tSuitability\tTotal additions + deletions\tTotal commits\tCurrent lines")
+			fmt.Fprintln(w, "------\t-----------\t---------------------------\t-------------\t-------------")
+		}
+		for _, v := range fs.finishedStats {
+			if c.GlobalBool("stripped") {
+				fmt.Fprintln(w, v.author)
+			} else {
+				fmt.Fprintf(w, "%s\t%.2f%%\t%d\t%d\t%d\n", v.author, v.suitability, v.linesTouched, v.commits, v.currentLines)
+			}
+		}
+		w.Flush()
 	}
-	err = getCurrentStats(folder, *filename, fs.workingStats)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	w := new(tabwriter.Writer)
-	w.Init(os.Stdout, 0, 8, 0, '\t', 0)
-	fmt.Fprintln(w, "Author\tSuitability\tTotal additions + deletions\tTotal commits\tCurrent lines")
-	fmt.Fprintln(w, "------\t-----------\t---------------------------\t-------------\t-------------")
-	for k, v := range fs.workingStats {
-		v.author = k
-		v.suitability = (v.commitsShare * commitsShareWeight) + (v.currentLinesShare * currentLinesShareWeight) + (v.linesTouchedShare * linesTouchedShareWeight)
-		fs.finishedStats = append(fs.finishedStats, v)
-	}
-	sort.Sort(fs.finishedStats)
-	for _, v := range fs.finishedStats {
-		fmt.Fprintf(w, "%s\t%.2f%%\t%d\t%d\t%d\n", v.author, v.suitability, v.linesTouched, v.commits, v.currentLines)
-	}
-	w.Flush()
+
+	app.Run(os.Args)
 }
